@@ -1,0 +1,545 @@
+openapi: "3.1.0"
+
+info:
+  title: ChatClient API
+  description: |
+    Conceptual API specification for the **high-level chat abstraction layer** of the
+    OpenCode Java Client library (`com.opencode.client.chat`).
+
+    This document is not an HTTP server contract — it describes the **Java method surface**
+    of `ChatClientFactory` and `ChatClient` expressed in OpenAPI notation so that tooling,
+    documentation generators, and SDK consumers can reason about the lifecycle and contracts
+    of each operation.
+
+    ## Two-layer architecture
+
+    ```
+    Application code
+         │
+         ▼
+    ChatClientFactory          (manages client identity, session persistence, in-memory cache)
+         │
+         ▼
+    ChatClient                 (scoped to one session; provides send/sendAsync/listMessages)
+         │
+         ▼
+    OpenCodeClientOperations   (low-level Java interface → HTTP calls to OpenCode Server)
+         │
+         ▼
+    OpenCode Server (Docker)   (anescobar/opencode-server:1.0.0, port 4096)
+    ```
+
+    ## Session persistence
+
+    Session metadata is stored as JSON files on disk:
+
+    ```
+    <sessionsRoot>/
+    └── <clientId>/
+        └── session.json        ← ChatSession JSON
+    ```
+
+    The default `sessionsRoot` resolves to `src/main/resources/sessions/` relative to the
+    project root (or next to the JAR when deployed).
+
+    ## Async polling strategy
+
+    `sendAsync` uses a fire-and-forget pattern:
+
+    1. Capture baseline message count via `GET /session/{id}/message`.
+    2. POST to `POST /session/{id}/prompt_async` (returns immediately).
+    3. Background thread polls `GET /session/{id}/message` every **1 000 ms**.
+    4. When a new assistant message appears beyond the baseline the callback is invoked.
+    5. Polling times out after **120 000 ms** and the callback is never invoked.
+
+  version: "1.0.0"
+  contact:
+    name: OpenCode Java Client
+
+# ---------------------------------------------------------------------------
+# Pseudo-server — models the Java API surface as resource paths
+# ---------------------------------------------------------------------------
+servers:
+  - url: java://com.opencode.client.chat
+    description: Java in-process API (not an HTTP server)
+
+tags:
+  - name: Factory
+    description: |
+      `ChatClientFactory` operations — client creation, retrieval, and discovery.
+      The factory is the single entry point; `ChatClient` is never instantiated directly.
+  - name: ChatClient
+    description: |
+      `ChatClient` operations — scoped to a single OpenCode session.
+      Obtain a `ChatClient` exclusively via `ChatClientFactory`.
+
+# ---------------------------------------------------------------------------
+# PATHS  (modelled as pseudo-REST resources)
+# ---------------------------------------------------------------------------
+paths:
+
+  # ── Factory ───────────────────────────────────────────────────────────────
+
+  /clients:
+    post:
+      operationId: newClient
+      summary: Create a new ChatClient with an auto-generated UUID
+      description: |
+        **Java:** `ChatClientFactory.newClient()`
+
+        Creates a new `ChatClient` with a randomly generated UUID as `clientId`.
+        A new session is created on the OpenCode server and its metadata is persisted
+        to `<sessionsRoot>/<clientId>/session.json` before the client is returned.
+
+        Equivalent to calling `newClientWithId` with `clientId = UUID.randomUUID().toString()`.
+      tags: [Factory]
+      responses:
+        "200":
+          description: The newly created ChatClient info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatClientInfo"
+              example:
+                clientId: "a3f1e2b0-7c4d-4e5f-9a1b-0c2d3e4f5a6b"
+                session:
+                  clientId: "a3f1e2b0-7c4d-4e5f-9a1b-0c2d3e4f5a6b"
+                  sessionId: "ses_336760ad5ffeINuBEBG5n3vlec"
+                  title: "chat-a3f1e2b0-7c4d-4e5f-9a1b-0c2d3e4f5a6b"
+                  createdAt: "2026-03-08T10:00:00Z"
+                  lastActivityAt: "2026-03-08T10:00:00Z"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    get:
+      operationId: listClientIds
+      summary: List all client IDs that have a persisted session on disk
+      description: |
+        **Java:** `ChatClientFactory.listClientIds()`
+
+        Scans `<sessionsRoot>` for subdirectories that contain a `session.json` file.
+        Returns their names as client IDs.
+
+        Returns an empty array if no sessions have been persisted yet or if the
+        sessions root does not exist.
+      tags: [Factory]
+      responses:
+        "200":
+          description: Array of known client IDs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+              example:
+                - "a3f1e2b0-7c4d-4e5f-9a1b-0c2d3e4f5a6b"
+                - "bot-session-1"
+
+  /clients/{clientId}:
+    post:
+      operationId: newClientWithId
+      summary: Create a new ChatClient with a caller-supplied client ID
+      description: |
+        **Java:** `ChatClientFactory.newClient(String clientId)`
+
+        Creates a brand-new `ChatClient` with the provided `clientId`.
+
+        **Important:** if a `session.json` already exists for this `clientId` on disk, a
+        **new** server session is created anyway and the old file is overwritten.
+        Use `GET /clients/{clientId}` to resume an existing session instead.
+
+        Throws `IllegalArgumentException` if `clientId` is blank.
+      tags: [Factory]
+      parameters:
+        - $ref: "#/components/parameters/clientId"
+      responses:
+        "200":
+          description: The newly created ChatClient info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatClientInfo"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    get:
+      operationId: getClient
+      summary: Get or create a ChatClient for the given client ID
+      description: |
+        **Java:** `ChatClientFactory.getClient(String clientId)`
+
+        Resolution order:
+
+        1. **In-memory cache hit** — returns the cached `ChatClient` immediately.
+        2. **Disk hit** — loads `session.json` from `<sessionsRoot>/<clientId>/session.json`
+           and reuses the existing OpenCode server session.
+        3. **Miss** — no file exists; creates a new server session (equivalent to
+           `POST /clients/{clientId}`).
+
+        Throws `IllegalArgumentException` if `clientId` is blank.
+      tags: [Factory]
+      parameters:
+        - $ref: "#/components/parameters/clientId"
+      responses:
+        "200":
+          description: The resolved ChatClient info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatClientInfo"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # ── ChatClient ────────────────────────────────────────────────────────────
+
+  /clients/{clientId}/messages:
+    post:
+      operationId: send
+      summary: Send a message synchronously and wait for the assistant reply
+      description: |
+        **Java:** `ChatClient.send(String text) → MessageWithParts`
+
+        Wraps `text` in a single `Part(type="text")`, posts it to
+        `POST /session/{sessionId}/message` on the OpenCode server, and **blocks**
+        until the assistant reply arrives.
+
+        After a successful reply, `lastActivityAt` in the persisted `session.json` is
+        updated to `Instant.now()`.
+
+        Throws `IllegalArgumentException` if `text` is null or blank.
+        Throws `OpenCodeClientHttpException` on HTTP 4xx / 5xx from the server.
+        Throws `OpenCodeClientException` on timeout or network error.
+      tags: [ChatClient]
+      parameters:
+        - $ref: "#/components/parameters/clientId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatSendRequest"
+            example:
+              text: "Explain dependency injection in one sentence."
+      responses:
+        "200":
+          description: The assistant reply with all message parts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageWithParts"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    get:
+      operationId: listMessages
+      summary: List all messages in this client's session (live from server)
+      description: |
+        **Java:** `ChatClient.listMessages() → List<MessageWithParts>`
+
+        Delegates to `OpenCodeClientOperations.listMessages(sessionId)`.
+        Returns all messages (both user and assistant) in chronological order.
+        Always fetches live from the OpenCode server — no local caching.
+      tags: [ChatClient]
+      parameters:
+        - $ref: "#/components/parameters/clientId"
+      responses:
+        "200":
+          description: Ordered list of messages with their parts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MessageWithParts"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /clients/{clientId}/messages/async:
+    post:
+      operationId: sendAsync
+      summary: Send a message asynchronously; callback invoked when reply arrives
+      description: |
+        **Java:** `ChatClient.sendAsync(String text, Consumer<MessageWithParts> onMessage)`
+
+        Fire-and-forget variant of `send`:
+
+        1. Captures the current message count as a baseline.
+        2. Posts to `POST /session/{sessionId}/prompt_async` (returns immediately).
+        3. Submits a background polling task to a single-threaded daemon executor.
+        4. The background thread polls `GET /session/{sessionId}/message` every
+           **1 000 ms** until a new assistant message appears beyond the baseline.
+        5. `onMessage` is called on the background thread with the assistant reply.
+        6. If no reply appears within **120 000 ms** polling stops silently (warn log).
+        7. If `ChatClient.close()` is called the polling thread is interrupted immediately.
+
+        Throws `IllegalArgumentException` if `text` is null or blank.
+        The `onMessage` callback is **never** invoked on a timeout or error.
+
+        **Note:** because this is a Java callback pattern there is no HTTP response body
+        in the real API. This endpoint is modelled here for documentation purposes only.
+      tags: [ChatClient]
+      parameters:
+        - $ref: "#/components/parameters/clientId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatSendRequest"
+            example:
+              text: "Generate a Java hello-world program."
+      responses:
+        "202":
+          description: |
+            Request accepted; polling started in background.
+            The actual reply will be delivered via the `onMessage` callback.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /clients/{clientId}/session:
+    get:
+      operationId: getSession
+      summary: Return the current ChatSession metadata snapshot
+      description: |
+        **Java:** `ChatClient.getSession() → ChatSession`
+
+        Returns the in-memory `ChatSession` object held by this `ChatClient`.
+        This is the local metadata snapshot — not a server call.
+        The object is updated in-place after every successful `send` or `sendAsync` callback.
+      tags: [ChatClient]
+      parameters:
+        - $ref: "#/components/parameters/clientId"
+      responses:
+        "200":
+          description: Current session metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatSession"
+              example:
+                clientId: "a3f1e2b0-7c4d-4e5f-9a1b-0c2d3e4f5a6b"
+                sessionId: "ses_336760ad5ffeINuBEBG5n3vlec"
+                title: "chat-a3f1e2b0-7c4d-4e5f-9a1b-0c2d3e4f5a6b"
+                createdAt: "2026-03-08T10:00:00Z"
+                lastActivityAt: "2026-03-08T10:15:32Z"
+
+  /clients/{clientId}/close:
+    post:
+      operationId: close
+      summary: Close the ChatClient and shut down the background executor
+      description: |
+        **Java:** `ChatClient.close()` (implements `AutoCloseable`)
+
+        Calls `ExecutorService.shutdownNow()` on the internal single-threaded executor.
+        Any in-flight async polling loop is interrupted.
+
+        After calling `close()` this `ChatClient` instance must not be reused.
+        The `ChatClientFactory` cache is **not** automatically evicted — call
+        `getClient(clientId)` again to obtain a fresh instance if needed.
+
+        Intended to be used in a try-with-resources block:
+
+        ```java
+        try (ChatClient chat = factory.newClient()) {
+            MessageWithParts reply = chat.send("Hello!");
+        }
+        ```
+      tags: [ChatClient]
+      parameters:
+        - $ref: "#/components/parameters/clientId"
+      responses:
+        "200":
+          description: Executor shut down successfully
+
+# ---------------------------------------------------------------------------
+# COMPONENTS
+# ---------------------------------------------------------------------------
+components:
+
+  parameters:
+    clientId:
+      name: clientId
+      in: path
+      required: true
+      description: |
+        Unique client identifier.  Either a UUID generated by `newClient()` or a
+        caller-supplied string provided to `newClient(String)` / `getClient(String)`.
+      schema:
+        type: string
+      example: "a3f1e2b0-7c4d-4e5f-9a1b-0c2d3e4f5a6b"
+
+  responses:
+    BadRequest:
+      description: Invalid argument (e.g. blank clientId or text)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorDetail"
+    InternalError:
+      description: Unexpected error (I/O failure, server error, timeout)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorDetail"
+
+  schemas:
+
+    # ── Core domain objects ─────────────────────────────────────────────────
+
+    ChatSession:
+      type: object
+      description: |
+        Metadata for a `ChatClient` session, persisted as JSON under
+        `<sessionsRoot>/<clientId>/session.json`.
+
+        Only metadata is persisted — message history is always fetched live
+        from the OpenCode server.
+      properties:
+        clientId:
+          type: string
+          description: Unique identifier assigned by `ChatClientFactory` at creation time.
+          example: "a3f1e2b0-7c4d-4e5f-9a1b-0c2d3e4f5a6b"
+        sessionId:
+          type: string
+          description: Session ID assigned by the OpenCode server.
+          example: "ses_336760ad5ffeINuBEBG5n3vlec"
+        title:
+          type: string
+          description: Human-readable title used when creating the server session.
+          example: "chat-a3f1e2b0-7c4d-4e5f-9a1b-0c2d3e4f5a6b"
+        createdAt:
+          type: string
+          format: date-time
+          description: ISO-8601 instant when this ChatSession was first created.
+          example: "2026-03-08T10:00:00Z"
+        lastActivityAt:
+          type: string
+          format: date-time
+          description: |
+            ISO-8601 instant of the last successful message exchange.
+            Updated automatically after every `send` call or `sendAsync` callback.
+          example: "2026-03-08T10:15:32Z"
+      required: [clientId, sessionId, createdAt, lastActivityAt]
+
+    ChatClientInfo:
+      type: object
+      description: Representation of a live `ChatClient` instance.
+      properties:
+        clientId:
+          type: string
+          description: The client's unique identifier.
+        session:
+          $ref: "#/components/schemas/ChatSession"
+      required: [clientId, session]
+
+    ChatSendRequest:
+      type: object
+      description: |
+        Request body for `send` and `sendAsync`.
+        The `text` is wrapped into a `Part(type="text")` and sent to the OpenCode server.
+      properties:
+        text:
+          type: string
+          description: The plain-text user message. Must not be null or blank.
+          example: "Explain dependency injection in one sentence."
+      required: [text]
+
+    # ── Re-used from opencode-server-api ───────────────────────────────────
+
+    MessageWithParts:
+      type: object
+      description: |
+        A message together with all its content parts. Mirrors the `MessageWithParts`
+        schema in `opencode-server-api.yaml`.
+      properties:
+        info:
+          $ref: "#/components/schemas/Message"
+        parts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Part"
+      required: [info, parts]
+
+    Message:
+      type: object
+      description: Core message metadata.
+      properties:
+        id:
+          type: string
+        sessionID:
+          type: string
+        role:
+          type: string
+          enum: [user, assistant, system, tool]
+        created:
+          type: integer
+          format: int64
+          description: Creation timestamp (Unix milliseconds)
+        updated:
+          type: integer
+          format: int64
+        model:
+          description: Model info (string or nested object)
+          oneOf:
+            - type: string
+            - type: object
+              additionalProperties: true
+        providerID:
+          type: string
+        system:
+          type: string
+      required: [id, role]
+
+    Part:
+      type: object
+      description: A single content part of a message.
+      properties:
+        type:
+          type: string
+          enum: [text, tool_call, tool_result, image]
+        text:
+          type: string
+          description: Text content (for `text` parts).
+        toolName:
+          type: string
+        toolCallId:
+          type: string
+        input:
+          description: Tool input (for `tool_call` parts).
+        output:
+          description: Tool output (for `tool_result` parts).
+        error:
+          type: string
+          description: Error string (for failed `tool_result` parts).
+      required: [type]
+
+    # ── Error ───────────────────────────────────────────────────────────────
+
+    ErrorDetail:
+      type: object
+      description: |
+        Describes an error thrown by the Java API.
+        Maps to `OpenCodeClientException` or `IllegalArgumentException`.
+      properties:
+        exceptionType:
+          type: string
+          description: Fully-qualified exception class name.
+          example: "com.opencode.client.exception.OpenCodeClientHttpException"
+        message:
+          type: string
+          description: Human-readable error message.
+          example: "HTTP 404 — session not found"
+        statusCode:
+          type: integer
+          description: HTTP status code (only present for `OpenCodeClientHttpException`).
+          example: 404
+      required: [message]

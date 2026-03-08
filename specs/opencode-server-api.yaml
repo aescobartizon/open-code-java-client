@@ -1,0 +1,1715 @@
+openapi: "3.1.0"
+
+info:
+  title: OpenCode Server API
+  description: |
+    Full HTTP API contract exposed by the OpenCode Server (`anescobar/opencode-server`).
+    This specification is consumed by `OpenCodeClient` — the low-level Java implementation
+    of `OpenCodeClientOperations`.
+
+    All endpoints are synchronous REST (JSON over HTTP/1.1).
+    The async prompt endpoint (`POST /session/{id}/prompt_async`) is fire-and-forget:
+    it returns immediately and the caller must poll `GET /session/{id}/message` to detect
+    the assistant reply.
+
+    **Base URL default:** `http://localhost:4096`
+  version: "1.0.0"
+  contact:
+    name: OpenCode Java Client
+    url: https://opencode.ai/docs/server
+
+servers:
+  - url: http://localhost:4096
+    description: Local OpenCode server (default port)
+
+tags:
+  - name: Global
+    description: Server health and instance management
+  - name: Project
+    description: Project registration and current project
+  - name: Path & VCS
+    description: Filesystem path and version control information
+  - name: Config
+    description: Server configuration read and update
+  - name: Provider
+    description: AI provider management and OAuth flows
+  - name: Session
+    description: Session lifecycle — create, update, fork, delete, share
+  - name: Message
+    description: Message exchange within a session
+  - name: Command
+    description: Available slash commands
+  - name: File
+    description: Filesystem operations — list, read, search
+  - name: LSP
+    description: Language Server Protocol status
+  - name: Formatter
+    description: Code formatter status
+  - name: MCP
+    description: Model Context Protocol server management
+  - name: Agent
+    description: Available AI agents
+  - name: Logging
+    description: Server-side log ingestion
+  - name: TUI
+    description: Terminal UI control operations
+  - name: Auth
+    description: Provider credential management
+
+# ---------------------------------------------------------------------------
+# PATHS
+# ---------------------------------------------------------------------------
+paths:
+
+  # ── Global ──────────────────────────────────────────────────────────────
+
+  /global/health:
+    get:
+      operationId: getHealth
+      summary: Server health check
+      tags: [Global]
+      responses:
+        "200":
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /instance/dispose:
+    post:
+      operationId: disposeInstance
+      summary: Dispose the current OpenCode instance
+      tags: [Global]
+      responses:
+        "200":
+          description: Disposed successfully
+          content:
+            application/json:
+              schema:
+                type: boolean
+
+  # ── Project ─────────────────────────────────────────────────────────────
+
+  /project:
+    get:
+      operationId: listProjects
+      summary: List all registered projects
+      tags: [Project]
+      responses:
+        "200":
+          description: List of projects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Project"
+
+  /project/current:
+    get:
+      operationId: getCurrentProject
+      summary: Get the current active project
+      tags: [Project]
+      responses:
+        "200":
+          description: Current project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+
+  # ── Path & VCS ──────────────────────────────────────────────────────────
+
+  /path:
+    get:
+      operationId: getPath
+      summary: Get current working path information
+      tags: [Path & VCS]
+      responses:
+        "200":
+          description: Path information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PathInfo"
+
+  /vcs:
+    get:
+      operationId: getVcs
+      summary: Get VCS information for the current project
+      tags: [Path & VCS]
+      responses:
+        "200":
+          description: VCS information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VcsInfo"
+
+  # ── Config ──────────────────────────────────────────────────────────────
+
+  /config:
+    get:
+      operationId: getConfig
+      summary: Get server configuration
+      tags: [Config]
+      responses:
+        "200":
+          description: Current configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppConfig"
+    patch:
+      operationId: updateConfig
+      summary: Partially update server configuration
+      tags: [Config]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AppConfig"
+      responses:
+        "200":
+          description: Updated configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppConfig"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /config/providers:
+    get:
+      operationId: getConfigProviders
+      summary: List providers and their default models from config
+      tags: [Config]
+      responses:
+        "200":
+          description: Provider configuration map
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                description: Map containing `providers` and `default` keys
+
+  # ── Provider ────────────────────────────────────────────────────────────
+
+  /provider:
+    get:
+      operationId: listProviders
+      summary: List all providers (connected and available)
+      tags: [Provider]
+      responses:
+        "200":
+          description: Provider map with `all`, `default`, and `connected` keys
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /provider/auth:
+    get:
+      operationId: getProviderAuth
+      summary: Get authentication methods for each provider
+      tags: [Provider]
+      responses:
+        "200":
+          description: Map of providerID → auth methods
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /provider/{id}/oauth/authorize:
+    post:
+      operationId: authorizeProvider
+      summary: Initiate OAuth authorization for a provider
+      tags: [Provider]
+      parameters:
+        - $ref: "#/components/parameters/providerId"
+      responses:
+        "200":
+          description: Authorization object (contains redirect URL etc.)
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /provider/{id}/oauth/callback:
+    post:
+      operationId: oauthCallback
+      summary: Handle OAuth callback for a provider
+      tags: [Provider]
+      parameters:
+        - $ref: "#/components/parameters/providerId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              description: Callback parameters (code, state, etc.)
+      responses:
+        "200":
+          description: Success flag
+          content:
+            application/json:
+              schema:
+                type: boolean
+
+  # ── Sessions ─────────────────────────────────────────────────────────────
+
+  /session:
+    get:
+      operationId: listSessions
+      summary: List all sessions
+      tags: [Session]
+      responses:
+        "200":
+          description: List of sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Session"
+    post:
+      operationId: createSession
+      summary: Create a new session
+      tags: [Session]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSessionRequest"
+      responses:
+        "200":
+          description: Created session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+
+  /session/status:
+    get:
+      operationId: getSessionStatuses
+      summary: Get running status of all sessions
+      tags: [Session]
+      responses:
+        "200":
+          description: Map of sessionID → SessionStatus
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  $ref: "#/components/schemas/SessionStatus"
+
+  /session/{id}:
+    get:
+      operationId: getSession
+      summary: Get a session by ID
+      tags: [Session]
+      parameters:
+        - $ref: "#/components/parameters/sessionId"
+      responses:
+        "200":
+          description: Session object
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateSession
+      summary: Update session title
+      tags: [Session]
+      parameters:
+        - $ref: "#/components/parameters/sessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSessionRequest"
+      responses:
+        "200":
+          description: Updated session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+    delete:
+      operationId: deleteSession
+      summary: Delete a session
+      tags: [Session]
+      parameters:
+        - $ref: "#/components/parameters/sessionId"
+      responses:
+        "200":
+          description: Deletion success flag
+          content:
+            application/json:
+              schema:
+                type: boolean
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /session/{id}/children:
+    get:
+      operationId: getSessionChildren
+      summary: Get child sessions
+      tags: [Session]
+      parameters:
+        - $ref: "#/components/parameters/sessionId"
+      responses:
+        "200":
+          description: List of child sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Session"
+
+  /session/{id}/todo:
+    get:
+      operationId: getSessionTodos
+      summary: Get the to-do list for a session
+      tags: [Session]
+      parameters:
+        - $ref: "#/components/parameters/sessionId"
+      responses:
+        "200":
+          description: List of to-do items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Todo"
+
+  /session/{id}/init:
+    post:
+      operationId: initSession
+      summary: Analyze application and create AGENTS.md
+      tags: [Session]
+      parameters:
+        - $ref: "#/components/parameters/sessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InitSessionRequest"
+      responses:
+        "200":
+          description: Success flag
+          content:
+            application/json:
+              schema:
+                type: boolean
+
+  /session/{id}/fork:
+    post:
+      operationId: forkSession
+      summary: Fork a session (optionally at a specific message)
+      tags: [Session]
+      parameters:
+        - $ref: "#/components/parameters/sessionId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ForkSessionRequest"
+      responses:
+        "200":
+          description: Forked session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+
+  /session/{id}/abort:
+    post:
+      operationId: abortSession
+      summary: Abort a running session
+      tags: [Session]
+      parameters:
+        - $ref: "#/components/parameters/sessionId"
+      responses:
+        "200":
+          description: Abort success flag
+          content:
+            application/json:
+              schema:
+                type: boolean
+
+  /session/{id}/share:
+    post:
+      operationId: shareSession
+      summary: Share a session publicly
+      tags: [Session]
+      parameters:
+        - $ref: "#/components/parameters/sessionId"
+      responses:
+        "200":
+          description: Updated session with share URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+    delete:
+      operationId: unshareSession
+      summary: Unshare a session
+      tags: [Session]
+      parameters:
+        - $ref: "#/components/parameters/sessionId"
+      responses:
+        "200":
+          description: Updated session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+
+  /session/{id}/diff:
+    get:
+      operationId: getSessionDiff
+      summary: Get file diff produced by a session
+      tags: [Session]
+      parameters:
+        - $ref: "#/components/parameters/sessionId"
+        - name: messageID
+          in: query
+          required: false
+          description: Optional message ID to diff up to
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of file diffs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FileDiff"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /session/{id}/summarize:
+    post:
+      operationId: summarizeSession
+      summary: Summarize a session using a specific model
+      tags: [Session]
+      parameters:
+        - $ref: "#/components/parameters/sessionId"
+        - name: providerID
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: modelID
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Success flag
+          content:
+            application/json:
+              schema:
+                type: boolean
+
+  /session/{id}/revert:
+    post:
+      operationId: revertSession
+      summary: Revert changes made by a message
+      tags: [Session]
+      parameters:
+        - $ref: "#/components/parameters/sessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RevertRequest"
+      responses:
+        "200":
+          description: Success flag
+          content:
+            application/json:
+              schema:
+                type: boolean
+
+  /session/{id}/unrevert:
+    post:
+      operationId: unrevertSession
+      summary: Restore all reverted messages in a session
+      tags: [Session]
+      parameters:
+        - $ref: "#/components/parameters/sessionId"
+      responses:
+        "200":
+          description: Result object or success flag
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: boolean
+                  - type: object
+                    additionalProperties: true
+
+  /session/{id}/permissions/{permissionID}:
+    post:
+      operationId: respondToPermission
+      summary: Respond to a permission request in a session
+      tags: [Session]
+      parameters:
+        - $ref: "#/components/parameters/sessionId"
+        - name: permissionID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PermissionRequest"
+      responses:
+        "200":
+          description: Success flag
+          content:
+            application/json:
+              schema:
+                type: boolean
+
+  # ── Messages ─────────────────────────────────────────────────────────────
+
+  /session/{id}/message:
+    get:
+      operationId: listMessages
+      summary: List all messages in a session
+      tags: [Message]
+      parameters:
+        - $ref: "#/components/parameters/sessionId"
+      responses:
+        "200":
+          description: List of messages with parts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MessageWithParts"
+    post:
+      operationId: sendMessage
+      summary: Send a message and wait for the assistant reply (synchronous)
+      tags: [Message]
+      parameters:
+        - $ref: "#/components/parameters/sessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendMessageRequest"
+      responses:
+        "200":
+          description: Assistant reply with parts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageWithParts"
+
+  /session/{id}/message/{messageID}:
+    get:
+      operationId: getMessage
+      summary: Get a specific message by ID
+      tags: [Message]
+      parameters:
+        - $ref: "#/components/parameters/sessionId"
+        - name: messageID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Message with parts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageWithParts"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /session/{id}/prompt_async:
+    post:
+      operationId: sendMessageAsync
+      summary: Send a message asynchronously (fire-and-forget)
+      description: |
+        Posts the message and returns immediately (HTTP 200 with no body or empty body).
+        The caller is responsible for polling `GET /session/{id}/message` to detect
+        the assistant reply.
+      tags: [Message]
+      parameters:
+        - $ref: "#/components/parameters/sessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendMessageRequest"
+      responses:
+        "200":
+          description: Accepted (no body)
+
+  /session/{id}/command:
+    post:
+      operationId: executeCommand
+      summary: Execute a slash command in a session
+      tags: [Message]
+      parameters:
+        - $ref: "#/components/parameters/sessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExecuteCommandRequest"
+      responses:
+        "200":
+          description: Command result as a message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageWithParts"
+
+  /session/{id}/shell:
+    post:
+      operationId: shellCommand
+      summary: Run a shell command in a session
+      tags: [Message]
+      parameters:
+        - $ref: "#/components/parameters/sessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ShellRequest"
+      responses:
+        "200":
+          description: Shell output as a message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageWithParts"
+
+  # ── Commands ─────────────────────────────────────────────────────────────
+
+  /command:
+    get:
+      operationId: listCommands
+      summary: List all available slash commands
+      tags: [Command]
+      responses:
+        "200":
+          description: List of commands
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Command"
+
+  # ── Files ─────────────────────────────────────────────────────────────────
+
+  /find:
+    get:
+      operationId: findInFiles
+      summary: Search file contents using a regex pattern
+      tags: [File]
+      parameters:
+        - name: pattern
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of matches
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+
+  /find/file:
+    get:
+      operationId: findFiles
+      summary: Find files and directories by name (fuzzy)
+      tags: [File]
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of file paths
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+
+  /find/symbol:
+    get:
+      operationId: findSymbols
+      summary: Find workspace symbols by query
+      tags: [File]
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of symbol objects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+
+  /file:
+    get:
+      operationId: listFiles
+      summary: List files and directories at a given path
+      tags: [File]
+      parameters:
+        - name: path
+          in: query
+          required: false
+          description: Directory path to list; omit for project root
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of file nodes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FileNode"
+
+  /file/content:
+    get:
+      operationId: getFileContent
+      summary: Read the content of a file
+      tags: [File]
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: File content
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileContent"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /file/status:
+    get:
+      operationId: getFileStatus
+      summary: Get git status for all tracked files
+      tags: [File]
+      responses:
+        "200":
+          description: List of file status objects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+
+  # ── LSP ──────────────────────────────────────────────────────────────────
+
+  /lsp:
+    get:
+      operationId: getLspStatus
+      summary: Get status of all configured LSP servers
+      tags: [LSP]
+      responses:
+        "200":
+          description: List of LSP statuses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LspStatus"
+
+  # ── Formatter ────────────────────────────────────────────────────────────
+
+  /formatter:
+    get:
+      operationId: getFormatterStatus
+      summary: Get status of all configured code formatters
+      tags: [Formatter]
+      responses:
+        "200":
+          description: List of formatter statuses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FormatterStatus"
+
+  # ── MCP ──────────────────────────────────────────────────────────────────
+
+  /mcp:
+    get:
+      operationId: getMcpStatus
+      summary: Get status of all configured MCP servers
+      tags: [MCP]
+      responses:
+        "200":
+          description: Map of server name → MCP status
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+    post:
+      operationId: addMcpServer
+      summary: Add an MCP server dynamically
+      tags: [MCP]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/McpAddRequest"
+      responses:
+        "200":
+          description: Resulting MCP status object
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  # ── Agents ───────────────────────────────────────────────────────────────
+
+  /agent:
+    get:
+      operationId: listAgents
+      summary: List all available agents
+      tags: [Agent]
+      responses:
+        "200":
+          description: List of agents
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Agent"
+
+  # ── Logging ──────────────────────────────────────────────────────────────
+
+  /log:
+    post:
+      operationId: log
+      summary: Write a log entry to the OpenCode server
+      tags: [Logging]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LogRequest"
+      responses:
+        "200":
+          description: Success flag
+          content:
+            application/json:
+              schema:
+                type: boolean
+
+  # ── TUI ──────────────────────────────────────────────────────────────────
+
+  /tui/append-prompt:
+    post:
+      operationId: tuiAppendPrompt
+      summary: Append text to the TUI prompt
+      tags: [TUI]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TuiAppendPromptRequest"
+      responses:
+        "200":
+          description: Success flag
+          content:
+            application/json:
+              schema:
+                type: boolean
+
+  /tui/open-help:
+    post:
+      operationId: tuiOpenHelp
+      summary: Open the help dialog in the TUI
+      tags: [TUI]
+      responses:
+        "200":
+          description: Success flag
+          content:
+            application/json:
+              schema:
+                type: boolean
+
+  /tui/open-sessions:
+    post:
+      operationId: tuiOpenSessions
+      summary: Open the session selector in the TUI
+      tags: [TUI]
+      responses:
+        "200":
+          description: Success flag
+          content:
+            application/json:
+              schema:
+                type: boolean
+
+  /tui/open-themes:
+    post:
+      operationId: tuiOpenThemes
+      summary: Open the theme selector in the TUI
+      tags: [TUI]
+      responses:
+        "200":
+          description: Success flag
+          content:
+            application/json:
+              schema:
+                type: boolean
+
+  /tui/open-models:
+    post:
+      operationId: tuiOpenModels
+      summary: Open the model selector in the TUI
+      tags: [TUI]
+      responses:
+        "200":
+          description: Success flag
+          content:
+            application/json:
+              schema:
+                type: boolean
+
+  /tui/submit-prompt:
+    post:
+      operationId: tuiSubmitPrompt
+      summary: Submit the current TUI prompt
+      tags: [TUI]
+      responses:
+        "200":
+          description: Success flag
+          content:
+            application/json:
+              schema:
+                type: boolean
+
+  /tui/clear-prompt:
+    post:
+      operationId: tuiClearPrompt
+      summary: Clear the TUI prompt
+      tags: [TUI]
+      responses:
+        "200":
+          description: Success flag
+          content:
+            application/json:
+              schema:
+                type: boolean
+
+  /tui/execute-command:
+    post:
+      operationId: tuiExecuteCommand
+      summary: Execute a command through the TUI
+      tags: [TUI]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TuiExecuteCommandRequest"
+      responses:
+        "200":
+          description: Success flag
+          content:
+            application/json:
+              schema:
+                type: boolean
+
+  /tui/show-toast:
+    post:
+      operationId: tuiShowToast
+      summary: Show a toast notification in the TUI
+      tags: [TUI]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TuiShowToastRequest"
+      responses:
+        "200":
+          description: Success flag
+          content:
+            application/json:
+              schema:
+                type: boolean
+
+  /tui/control/response:
+    post:
+      operationId: tuiControlResponse
+      summary: Respond to a TUI control request
+      tags: [TUI]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TuiControlResponse"
+      responses:
+        "200":
+          description: Success flag
+          content:
+            application/json:
+              schema:
+                type: boolean
+
+  /tui/control/next:
+    get:
+      operationId: tuiControlNext
+      summary: Wait for the next TUI control request
+      tags: [TUI]
+      responses:
+        "200":
+          description: Control request object
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  # ── Auth ─────────────────────────────────────────────────────────────────
+
+  /auth/{id}:
+    put:
+      operationId: setAuth
+      summary: Set authentication credentials for a provider
+      tags: [Auth]
+      parameters:
+        - $ref: "#/components/parameters/providerId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              description: Credentials map (schema depends on provider)
+      responses:
+        "200":
+          description: Success flag
+          content:
+            application/json:
+              schema:
+                type: boolean
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+# ---------------------------------------------------------------------------
+# COMPONENTS
+# ---------------------------------------------------------------------------
+components:
+
+  parameters:
+    sessionId:
+      name: id
+      in: path
+      required: true
+      description: Session identifier
+      schema:
+        type: string
+      example: ses_336760ad5ffeINuBEBG5n3vlec
+
+    providerId:
+      name: id
+      in: path
+      required: true
+      description: Provider identifier (e.g. openai, anthropic)
+      schema:
+        type: string
+      example: openai
+
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    BadRequest:
+      description: Invalid request parameters
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: Authentication required or credentials invalid
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+  schemas:
+
+    # ── Responses ──────────────────────────────────────────────────────────
+
+    HealthResponse:
+      type: object
+      description: Server health status
+      properties:
+        healthy:
+          type: boolean
+          description: Whether the server is healthy
+        version:
+          type: string
+          description: Server version string
+      required: [healthy]
+      example:
+        healthy: true
+        version: "0.3.25"
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        status:
+          type: integer
+
+    # ── Session ────────────────────────────────────────────────────────────
+
+    Session:
+      type: object
+      description: An OpenCode session
+      properties:
+        id:
+          type: string
+          description: Unique session identifier
+        title:
+          type: string
+          description: Human-readable session title
+        parentID:
+          type: string
+          nullable: true
+          description: Parent session ID for forked sessions
+        created:
+          type: integer
+          format: int64
+          description: Creation timestamp (Unix milliseconds)
+        updated:
+          type: integer
+          format: int64
+          description: Last update timestamp (Unix milliseconds)
+        messageCount:
+          type: integer
+          description: Number of messages in the session
+        share:
+          type: string
+          nullable: true
+          description: Public share URL (present when session is shared)
+      required: [id]
+      example:
+        id: ses_336760ad5ffeINuBEBG5n3vlec
+        title: My Chat Session
+        created: 1741200000000
+        updated: 1741200001000
+        messageCount: 4
+
+    CreateSessionRequest:
+      type: object
+      description: Request body for creating a new session
+      properties:
+        title:
+          type: string
+          description: Optional title for the session
+        parentID:
+          type: string
+          description: Optional parent session ID
+      example:
+        title: Code Review Session
+
+    UpdateSessionRequest:
+      type: object
+      description: Request body for updating session properties
+      properties:
+        title:
+          type: string
+      example:
+        title: Updated Title
+
+    SessionStatus:
+      type: object
+      description: Running status of a session
+      properties:
+        sessionID:
+          type: string
+        status:
+          type: string
+          enum: [idle, running, error]
+          description: Current execution status
+      required: [sessionID, status]
+
+    ForkSessionRequest:
+      type: object
+      description: Optional request body for forking a session
+      properties:
+        messageID:
+          type: string
+          description: Message ID to fork from; omit to fork from head
+
+    RevertRequest:
+      type: object
+      description: Request body for reverting a message
+      properties:
+        messageID:
+          type: string
+        partID:
+          type: string
+
+    PermissionRequest:
+      type: object
+      description: Response to a permission request
+      properties:
+        response:
+          type: string
+          enum: [allow, deny]
+        remember:
+          type: boolean
+          description: If true, remember this decision for future requests
+      required: [response]
+
+    InitSessionRequest:
+      type: object
+      description: Request body for initializing session with AGENTS.md
+      properties:
+        messageID:
+          type: string
+        providerID:
+          type: string
+        modelID:
+          type: string
+
+    Todo:
+      type: object
+      description: A to-do item tracked within a session
+      properties:
+        id:
+          type: string
+        content:
+          type: string
+        status:
+          type: string
+          enum: [pending, in_progress, completed, cancelled]
+        priority:
+          type: string
+          enum: [high, medium, low]
+
+    FileDiff:
+      type: object
+      description: A file diff produced by a session
+      properties:
+        file:
+          type: string
+          description: File path
+        added:
+          type: integer
+          description: Lines added
+        removed:
+          type: integer
+          description: Lines removed
+        patch:
+          type: string
+          description: Unified diff patch
+
+    # ── Message ────────────────────────────────────────────────────────────
+
+    Message:
+      type: object
+      description: A message in a session
+      properties:
+        id:
+          type: string
+        sessionID:
+          type: string
+        role:
+          type: string
+          enum: [user, assistant, system, tool]
+        created:
+          type: integer
+          format: int64
+        updated:
+          type: integer
+          format: int64
+        model:
+          description: Model info (string or nested object)
+          oneOf:
+            - type: string
+            - type: object
+              additionalProperties: true
+        providerID:
+          type: string
+        system:
+          type: string
+      required: [id, role]
+
+    Part:
+      type: object
+      description: A message part (text, tool call, tool result, etc.)
+      properties:
+        type:
+          type: string
+          enum: [text, tool_call, tool_result, image]
+          description: Part type discriminator
+        text:
+          type: string
+          description: Text content (for text parts)
+        toolName:
+          type: string
+          description: Tool name (for tool_call / tool_result parts)
+        toolCallId:
+          type: string
+        input:
+          description: Tool input (for tool_call parts)
+        output:
+          description: Tool output (for tool_result parts)
+        error:
+          type: string
+          description: Error string (for failed tool_result parts)
+      required: [type]
+
+    MessageWithParts:
+      type: object
+      description: A message together with all its parts
+      properties:
+        info:
+          $ref: "#/components/schemas/Message"
+        parts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Part"
+      required: [info, parts]
+
+    SendMessageRequest:
+      type: object
+      description: Request body for sending a message
+      properties:
+        messageID:
+          type: string
+          description: Optional client-generated message ID
+        model:
+          type: string
+          description: "Model override (format: providerID/modelID)"
+        agent:
+          type: string
+          description: Agent to use
+        noReply:
+          type: boolean
+          description: If true, no assistant reply is generated
+        system:
+          type: string
+          description: System prompt override
+        parts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Part"
+          description: Message parts (required)
+      required: [parts]
+      example:
+        parts:
+          - type: text
+            text: "Explain dependency injection in one sentence."
+
+    ExecuteCommandRequest:
+      type: object
+      description: Request body for executing a slash command
+      properties:
+        messageID:
+          type: string
+        agent:
+          type: string
+        model:
+          type: string
+        command:
+          type: string
+          description: "The slash command to execute (e.g. init, undo)"
+        arguments:
+          description: Command arguments
+      required: [command]
+
+    ShellRequest:
+      type: object
+      description: Request body for running a shell command
+      properties:
+        agent:
+          type: string
+        model:
+          type: string
+        command:
+          type: string
+          description: Shell command to execute
+      required: [command]
+
+    # ── Config ─────────────────────────────────────────────────────────────
+
+    AppConfig:
+      type: object
+      description: OpenCode server configuration
+      properties:
+        theme:
+          type: string
+        autoshare:
+          type: boolean
+        autoupdate:
+          type: boolean
+        keybinds:
+          type: object
+          additionalProperties: true
+          description: Keybinds map (action → key)
+        models:
+          type: object
+          additionalProperties: true
+          description: Model configuration per provider
+        mcp:
+          type: object
+          additionalProperties: true
+          description: MCP server configurations
+        agents:
+          type: object
+          additionalProperties: true
+          description: Agent configurations
+
+    # ── Files ──────────────────────────────────────────────────────────────
+
+    FileNode:
+      type: object
+      description: A file or directory entry
+      properties:
+        path:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+          enum: [file, directory]
+        size:
+          type: integer
+          format: int64
+
+    FileContent:
+      type: object
+      description: Content of a file
+      properties:
+        path:
+          type: string
+        content:
+          type: string
+        encoding:
+          type: string
+          example: utf-8
+
+    # ── Infrastructure ─────────────────────────────────────────────────────
+
+    Project:
+      type: object
+      properties:
+        path:
+          type: string
+          description: Absolute filesystem path
+        git:
+          type: boolean
+          description: Whether the project is a git repository
+
+    PathInfo:
+      type: object
+      properties:
+        cwd:
+          type: string
+          description: Current working directory
+        root:
+          type: string
+          description: Project root directory
+        config:
+          type: string
+          description: Config file path
+
+    VcsInfo:
+      type: object
+      properties:
+        branch:
+          type: string
+        commit:
+          type: string
+          description: Current commit SHA
+        dirty:
+          type: boolean
+          description: Whether there are uncommitted changes
+        root:
+          type: string
+
+    # ── Tooling ────────────────────────────────────────────────────────────
+
+    LspStatus:
+      type: object
+      properties:
+        name:
+          type: string
+        status:
+          type: string
+        error:
+          type: string
+          nullable: true
+
+    FormatterStatus:
+      type: object
+      properties:
+        name:
+          type: string
+        status:
+          type: string
+        error:
+          type: string
+          nullable: true
+
+    Agent:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        instructions:
+          type: string
+
+    Command:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+
+    McpAddRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: MCP server name
+        config:
+          type: object
+          additionalProperties: true
+          description: MCP server configuration
+      required: [name]
+
+    # ── Logging ────────────────────────────────────────────────────────────
+
+    LogRequest:
+      type: object
+      properties:
+        service:
+          type: string
+        level:
+          type: string
+          enum: [debug, info, warn, error]
+          description: Log level (lowercase)
+        message:
+          type: string
+        extra:
+          description: Additional structured data
+
+    # ── TUI ────────────────────────────────────────────────────────────────
+
+    TuiAppendPromptRequest:
+      type: object
+      properties:
+        text:
+          type: string
+
+    TuiExecuteCommandRequest:
+      type: object
+      properties:
+        command:
+          type: string
+          description: TUI command to execute (e.g. toggle-sidebar)
+      required: [command]
+
+    TuiShowToastRequest:
+      type: object
+      properties:
+        message:
+          type: string
+        level:
+          type: string
+          enum: [info, warn, error]
+
+    TuiControlResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        response:
+          type: string

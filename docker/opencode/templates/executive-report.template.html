@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Informe Ejecutivo — {{PROJECT_NAME}}</title>
+  <style>
+    /* ─── Reset & base ─────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+      color: #1e2a38;
+      background: #f4f6f9;
+    }
+
+    /* ─── Layout ────────────────────────────────────────────────── */
+    .page { max-width: 1100px; margin: 40px auto; background: #fff; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,.10); overflow: hidden; }
+
+    /* ─── Header ────────────────────────────────────────────────── */
+    .header {
+      background: linear-gradient(135deg, #0d2b4e 0%, #1565a8 100%);
+      color: #fff;
+      padding: 40px 48px 32px;
+    }
+    .header .badge {
+      display: inline-block;
+      background: rgba(255,255,255,.18);
+      border: 1px solid rgba(255,255,255,.35);
+      border-radius: 20px;
+      padding: 3px 14px;
+      font-size: 11px;
+      letter-spacing: .8px;
+      text-transform: uppercase;
+      margin-bottom: 14px;
+    }
+    .header h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+    .header .subtitle { font-size: 15px; opacity: .85; margin-bottom: 24px; }
+    .header .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+    }
+    .header .meta-item { background: rgba(255,255,255,.12); border-radius: 6px; padding: 10px 16px; }
+    .header .meta-item .label { font-size: 10px; text-transform: uppercase; letter-spacing: .7px; opacity: .7; }
+    .header .meta-item .value { font-size: 14px; font-weight: 600; margin-top: 2px; }
+
+    /* ─── Content area ──────────────────────────────────────────── */
+    .content { padding: 40px 48px; }
+
+    /* ─── Section ───────────────────────────────────────────────── */
+    .section { margin-bottom: 44px; }
+    .section-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #0d2b4e;
+      border-left: 4px solid #1565a8;
+      padding-left: 14px;
+      margin-bottom: 18px;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+    }
+    .section p { color: #3a4a5c; margin-bottom: 10px; }
+
+    /* ─── Repository tree ───────────────────────────────────────── */
+    .repo-tree {
+      background: #f0f4fa;
+      border: 1px solid #dce4f0;
+      border-radius: 6px;
+      padding: 20px 24px;
+      font-family: 'Cascadia Code', 'Courier New', monospace;
+      font-size: 13px;
+      white-space: pre;
+      overflow-x: auto;
+      color: #1e3a5f;
+      margin-bottom: 20px;
+    }
+
+    /* ─── Tables ────────────────────────────────────────────────── */
+    table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 10px; }
+    thead tr { background: #0d2b4e; color: #fff; }
+    thead th { padding: 10px 14px; text-align: left; font-weight: 600; letter-spacing: .3px; }
+    tbody tr:nth-child(even) { background: #f4f7fc; }
+    tbody tr:hover { background: #e8eef8; }
+    tbody td { padding: 9px 14px; border-bottom: 1px solid #e2e8f2; vertical-align: top; }
+    tbody td:first-child { font-family: 'Cascadia Code', monospace; font-size: 12px; color: #1565a8; white-space: nowrap; }
+
+    /* ─── Tags ──────────────────────────────────────────────────── */
+    .tag { display: inline-block; padding: 2px 9px; border-radius: 12px; font-size: 11px; font-weight: 600; margin: 1px 2px; }
+    .tag-truth  { background: #d1fae5; color: #065f46; }
+    .tag-output { background: #fef3c7; color: #92400e; }
+    .tag-ops    { background: #ede9fe; color: #4c1d95; }
+    .tag-agent  { background: #dbeafe; color: #1e40af; }
+
+    /* ─── Metrics grid ──────────────────────────────────────────── */
+    .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 10px; }
+    .metric-card { background: #f0f4fa; border: 1px solid #dce4f0; border-radius: 8px; padding: 18px 20px; text-align: center; }
+    .metric-card .metric-value { font-size: 32px; font-weight: 700; color: #1565a8; line-height: 1; }
+    .metric-card .metric-label { font-size: 12px; color: #5a7090; margin-top: 6px; }
+
+    /* ─── Standards coverage bar ────────────────────────────────── */
+    .coverage-bar-wrap { background: #e2e8f0; border-radius: 10px; height: 8px; overflow: hidden; margin-top: 4px; }
+    .coverage-bar { height: 100%; border-radius: 10px; background: linear-gradient(90deg, #1565a8, #22d3ee); }
+
+    /* ─── Standards detail tables ───────────────────────────────── */
+    .std-block { margin-bottom: 36px; }
+    .std-block-header {
+      display: flex; align-items: center; gap: 14px;
+      background: #f0f4fa; border: 1px solid #dce4f0;
+      border-radius: 8px 8px 0 0; padding: 14px 20px;
+      border-bottom: 2px solid #1565a8;
+    }
+    .std-badge {
+      background: #0d2b4e; color: #fff;
+      font-size: 12px; font-weight: 700;
+      padding: 4px 12px; border-radius: 4px;
+      white-space: nowrap; letter-spacing: .4px;
+    }
+    .std-block-header .std-title { font-size: 14px; font-weight: 700; color: #0d2b4e; }
+    .std-block-header .std-subtitle { font-size: 12px; color: #5a7090; margin-top: 1px; }
+    .std-block-header .std-global-score {
+      margin-left: auto; text-align: right;
+    }
+    .std-block-header .std-global-score .score-value {
+      font-size: 22px; font-weight: 800; color: #1565a8; line-height: 1;
+    }
+    .std-block-header .std-global-score .score-label {
+      font-size: 10px; color: #7a8fa8; text-transform: uppercase; letter-spacing: .5px;
+    }
+    .std-detail-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    .std-detail-table thead tr { background: #1a3d6e; color: #fff; }
+    .std-detail-table thead th { padding: 8px 14px; text-align: left; font-weight: 600; }
+    .std-detail-table tbody tr:nth-child(even) { background: #f7f9fd; }
+    .std-detail-table tbody td { padding: 8px 14px; border-bottom: 1px solid #e8eef8; vertical-align: middle; }
+    .std-detail-table tbody td:first-child { font-weight: 600; color: #1e3a5f; width: 22%; }
+    .std-detail-table tbody td:nth-child(2) { color: #3a4a5c; width: 35%; }
+
+    .level-badge {
+      display: inline-block; font-size: 11px; font-weight: 700;
+      padding: 2px 10px; border-radius: 10px; white-space: nowrap;
+    }
+    .level-full     { background: #d1fae5; color: #065f46; }
+    .level-high     { background: #dbeafe; color: #1e40af; }
+    .level-medium   { background: #fef9c3; color: #854d0e; }
+    .level-low      { background: #fee2e2; color: #991b1b; }
+    .level-none     { background: #f1f5f9; color: #64748b; }
+
+    .artefact-tag {
+      display: inline-block; background: #eff6ff; color: #1d4ed8;
+      border: 1px solid #bfdbfe; border-radius: 4px;
+      font-size: 11px; padding: 1px 7px; margin: 1px 2px;
+      font-family: 'Cascadia Code', monospace;
+    }
+    .coverage-cell { min-width: 140px; }
+    .coverage-cell .pct { font-size: 11px; color: #5a7090; margin-bottom: 3px; }
+
+    /* ─── Standards summary grid ────────────────────────────────── */
+    .std-summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px; margin-bottom: 32px;
+    }
+    .std-summary-card {
+      background: #f7f9fd; border: 1px solid #dce4f0;
+      border-radius: 8px; padding: 16px 20px;
+      border-top: 3px solid #1565a8;
+    }
+    .std-summary-card .card-std { font-size: 11px; font-weight: 700; color: #1565a8; text-transform: uppercase; letter-spacing: .5px; }
+    .std-summary-card .card-name { font-size: 13px; font-weight: 700; color: #0d2b4e; margin: 3px 0 8px; }
+    .std-summary-card .card-bar-wrap { background: #e2e8f0; border-radius: 10px; height: 10px; overflow: hidden; margin-bottom: 6px; }
+    .std-summary-card .card-bar { height: 100%; border-radius: 10px; }
+    .bar-green  { background: linear-gradient(90deg, #10b981, #34d399); }
+    .bar-blue   { background: linear-gradient(90deg, #1565a8, #22d3ee); }
+    .bar-yellow { background: linear-gradient(90deg, #f59e0b, #fcd34d); }
+    .bar-orange { background: linear-gradient(90deg, #f97316, #fb923c); }
+    .std-summary-card .card-pct { font-size: 20px; font-weight: 800; color: #1565a8; }
+    .std-summary-card .card-level { font-size: 11px; color: #5a7090; }
+
+    /* ─── Next steps ────────────────────────────────────────────── */
+    .steps-list { list-style: none; padding: 0; }
+    .steps-list li { display: flex; align-items: flex-start; gap: 12px; padding: 10px 14px; border-radius: 6px; margin-bottom: 8px; background: #f4f7fc; border: 1px solid #dce4f0; }
+    .steps-list li .step-num { min-width: 26px; height: 26px; background: #1565a8; color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; }
+    .steps-list li .step-text { color: #2d3e55; }
+
+    /* ─── Footer ────────────────────────────────────────────────── */
+    .footer { background: #0d2b4e; color: rgba(255,255,255,.65); padding: 20px 48px; font-size: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+    .footer strong { color: #fff; }
+    .footer .seal { font-style: italic; font-size: 11px; opacity: .7; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ══════════════════════════════════════════════════════════════
+       CABECERA
+  ══════════════════════════════════════════════════════════════ -->
+  <div class="header">
+    <div class="badge">Informe Ejecutivo · {{REPORT_ID}}</div>
+    <h1>{{PROJECT_NAME}}</h1>
+    <p class="subtitle">{{PROJECT_DESCRIPTION}}</p>
+    <div class="meta-grid">
+      <div class="meta-item">
+        <div class="label">Fecha de creación</div>
+        <div class="value">{{CREATION_DATE}}</div>
+      </div>
+      <div class="meta-item">
+        <div class="label">Versión del informe</div>
+        <div class="value">{{REPORT_VERSION}}</div>
+      </div>
+      <div class="meta-item">
+        <div class="label">Arquitectura objetivo</div>
+        <div class="value">Microservicios</div>
+      </div>
+      <div class="meta-item">
+        <div class="label">Generado por</div>
+        <div class="value">AgentProjectFromScratch</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <!-- ══════════════════════════════════════════════════════════
+         SECCIÓN 1 — ESTRUCTURA DEL REPOSITORIO
+    ══════════════════════════════════════════════════════════ -->
+    <div class="section">
+      <div class="section-title">1. Estructura del repositorio</div>
+      <div class="repo-tree">{{REPO_TREE}}</div>
+      <table>
+        <thead>
+          <tr><th>Carpeta</th><th>Propósito</th><th>Tipo de artefactos</th><th>Naturaleza</th></tr>
+        </thead>
+        <tbody>
+          {{FOLDER_ROWS}}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════
+         SECCIÓN 2 — AGENTES ESPECIALIZADOS
+    ══════════════════════════════════════════════════════════ -->
+    <div class="section">
+      <div class="section-title">2. Agentes especializados incluidos</div>
+      <table>
+        <thead>
+          <tr><th>Agente</th><th>Rol</th><th>Responsabilidad principal</th><th>Herramientas</th></tr>
+        </thead>
+        <tbody>
+          {{AGENT_ROWS}}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════
+         SECCIÓN 3 — ESTÁNDARES SOPORTADOS
+    ══════════════════════════════════════════════════════════ -->
+    <div class="section">
+      <div class="section-title">3. Estándares de software soportados</div>
+
+      <!-- ── 3.1 Resumen visual de cobertura por estándar ── -->
+      <div class="std-summary-grid">
+        <div class="std-summary-card">
+          <div class="card-std">IEEE 830 · 1998</div>
+          <div class="card-name">Especificación de Requisitos</div>
+          <div class="card-bar-wrap"><div class="card-bar bar-green" style="width:75%"></div></div>
+          <div class="card-pct">75%</div>
+          <div class="card-level">Alto — plantilla v2.0.0 cubre todos los atributos</div>
+        </div>
+        <div class="std-summary-card">
+          <div class="card-std">BABOK v3 · 2015</div>
+          <div class="card-name">Análisis de Negocio</div>
+          <div class="card-bar-wrap"><div class="card-bar bar-blue" style="width:65%"></div></div>
+          <div class="card-pct">65%</div>
+          <div class="card-level">Medio-alto — 5 de 6 áreas de conocimiento cubiertas</div>
+        </div>
+        <div class="std-summary-card">
+          <div class="card-std">CMMI Dev · v2.0</div>
+          <div class="card-name">Madurez del Proceso</div>
+          <div class="card-bar-wrap"><div class="card-bar bar-blue" style="width:40%"></div></div>
+          <div class="card-pct">40%</div>
+          <div class="card-level">Nivel 2 — Gestionado (estructura preparada)</div>
+        </div>
+        <div class="std-summary-card">
+          <div class="card-std">ISO/IEC 25010 · 2023</div>
+          <div class="card-name">Calidad del Producto</div>
+          <div class="card-bar-wrap"><div class="card-bar bar-yellow" style="width:30%"></div></div>
+          <div class="card-pct">30%</div>
+          <div class="card-level">Bajo — estructura base, requiere contenido</div>
+        </div>
+        <div class="std-summary-card">
+          <div class="card-std">IEEE 1012 · 2016</div>
+          <div class="card-name">Verificación y Validación</div>
+          <div class="card-bar-wrap"><div class="card-bar bar-yellow" style="width:35%"></div></div>
+          <div class="card-pct">35%</div>
+          <div class="card-level">Bajo-medio — tests de alto nivel en plantilla</div>
+        </div>
+        <div class="std-summary-card">
+          <div class="card-std">ISO/IEC 27001 · 2022</div>
+          <div class="card-name">Seguridad de la Información</div>
+          <div class="card-bar-wrap"><div class="card-bar bar-orange" style="width:20%"></div></div>
+          <div class="card-pct">20%</div>
+          <div class="card-level">Bajo — ops/ y architecture/ preparados</div>
+        </div>
+        <div class="std-summary-card">
+          <div class="card-std">ITIL v4 · 2019</div>
+          <div class="card-name">Operación de Servicios</div>
+          <div class="card-bar-wrap"><div class="card-bar bar-orange" style="width:25%"></div></div>
+          <div class="card-pct">25%</div>
+          <div class="card-level">Bajo — ops/ y runbooks preparados</div>
+        </div>
+        <div class="std-summary-card">
+          <div class="card-std">OpenAPI · 3.x</div>
+          <div class="card-name">Contratos de APIs REST</div>
+          <div class="card-bar-wrap"><div class="card-bar bar-blue" style="width:55%"></div></div>
+          <div class="card-pct">55%</div>
+          <div class="card-level">Medio — spec/open-api/ y services/contracts/ listos</div>
+        </div>
+      </div>
+
+      <!-- ── 3.2 IEEE 830 — Detalle por atributo de calidad de requisitos ── -->
+      <div class="std-block">
+        <div class="std-block-header">
+          <div class="std-badge">IEEE 830</div>
+          <div>
+            <div class="std-title">Especificación de Requisitos Software — 1998</div>
+            <div class="std-subtitle">Atributos de calidad de una buena especificación de requisitos</div>
+          </div>
+          <div class="std-global-score">
+            <div class="score-value">75%</div>
+            <div class="score-label">Cobertura global</div>
+          </div>
+        </div>
+        <table class="std-detail-table">
+          <thead>
+            <tr>
+              <th>Atributo IEEE 830</th>
+              <th>Descripción</th>
+              <th>Artefactos que lo cubren</th>
+              <th>Cobertura</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Correcto</td>
+              <td>Cada requisito refleja una necesidad real del sistema o del negocio</td>
+              <td>
+                <span class="artefact-tag">docs/requirements/functional/</span>
+                <span class="artefact-tag">traceability/RTM.yaml</span>
+              </td>
+              <td class="coverage-cell">
+                <span class="level-badge level-high">Alto</span>
+                <div class="pct">80%</div>
+                <div class="coverage-bar-wrap"><div class="coverage-bar" style="width:80%"></div></div>
+              </td>
+            </tr>
+            <tr>
+              <td>No ambiguo</td>
+              <td>Cada requisito tiene una única interpretación posible</td>
+              <td>
+                <span class="artefact-tag">functional-requirement.template.md §1</span>
+                <span class="artefact-tag">§10 Criterios AC (BDD)</span>
+              </td>
+              <td class="coverage-cell">
+                <span class="level-badge level-high">Alto</span>
+                <div class="pct">80%</div>
+                <div class="coverage-bar-wrap"><div class="coverage-bar" style="width:80%"></div></div>
+              </td>
+            </tr>
+            <tr>
+              <td>Completo</td>
+              <td>Incluye respuestas a todas las entradas posibles, condiciones y flujos</td>
+              <td>
+                <span class="artefact-tag">§3 Entradas/Salidas</span>
+                <span class="artefact-tag">§7 Flujo principal</span>
+                <span class="artefact-tag">§8 Flujos alternativos</span>
+                <span class="artefact-tag">§9 Flujos excepción</span>
+              </td>
+              <td class="coverage-cell">
+                <span class="level-badge level-high">Alto</span>
+                <div class="pct">85%</div>
+                <div class="coverage-bar-wrap"><div class="coverage-bar" style="width:85%"></div></div>
+              </td>
+            </tr>
+            <tr>
+              <td>Consistente</td>
+              <td>No contradice otros requisitos ni la arquitectura global</td>
+              <td>
+                <span class="artefact-tag">§15 Dependencias (relación conflicto)</span>
+                <span class="artefact-tag">§16 Notas y decisiones abiertas</span>
+                <span class="artefact-tag">docs/adr/</span>
+              </td>
+              <td class="coverage-cell">
+                <span class="level-badge level-medium">Medio</span>
+                <div class="pct">60%</div>
+                <div class="coverage-bar-wrap"><div class="coverage-bar" style="width:60%"></div></div>
+              </td>
+            </tr>
+            <tr>
+              <td>Priorizado</td>
+              <td>Cada requisito tiene un nivel de importancia asignado</td>
+              <td>
+                <span class="artefact-tag">Metadatos §Prioridad</span>
+                <span class="artefact-tag">backlog/epics/</span>
+              </td>
+              <td class="coverage-cell">
+                <span class="level-badge level-full">Completo</span>
+                <div class="pct">100%</div>
+                <div class="coverage-bar-wrap"><div class="coverage-bar" style="width:100%"></div></div>
+              </td>
+            </tr>
+            <tr>
+              <td>Verificable</td>
+              <td>Puede comprobarse si el sistema lo cumple mediante test, inspección o análisis</td>
+              <td>
+                <span class="artefact-tag">Metadatos §Método verificación</span>
+                <span class="artefact-tag">§12 Criterios AC</span>
+                <span class="artefact-tag">§13 Tests alto nivel</span>
+              </td>
+              <td class="coverage-cell">
+                <span class="level-badge level-full">Completo</span>
+                <div class="pct">100%</div>
+                <div class="coverage-bar-wrap"><div class="coverage-bar" style="width:100%"></div></div>
+              </td>
+            </tr>
+            <tr>
+              <td>Modificable</td>
+              <td>La estructura permite cambiar requisitos sin afectar a otros de forma incontrolada</td>
+              <td>
+                <span class="artefact-tag">Historial de versiones</span>
+                <span class="artefact-tag">Metadatos §Estabilidad</span>
+                <span class="artefact-tag">traceability/RTM.yaml</span>
+              </td>
+              <td class="coverage-cell">
+                <span class="level-badge level-high">Alto</span>
+                <div class="pct">85%</div>
+                <div class="coverage-bar-wrap"><div class="coverage-bar" style="width:85%"></div></div>
+              </td>
+            </tr>
+            <tr>
+              <td>Trazable</td>
+              <td>El origen del requisito y su implementación pueden rastrearse bidireccionalmente</td>
+              <td>
+                <span class="artefact-tag">§14 Trazabilidad (BRS→FRS→UC→US→TC)</span>
+                <span class="artefact-tag">Metadatos §Enlace RTM</span>
+                <span class="artefact-tag">traceability/RTM.yaml</span>
+              </td>
+              <td class="coverage-cell">
+                <span class="level-badge level-full">Completo</span>
+                <div class="pct">100%</div>
+                <div class="coverage-bar-wrap"><div class="coverage-bar" style="width:100%"></div></div>
+              </td>
+            </tr>
+            <tr>
+              <td>Entradas / Salidas</td>
+              <td>Descripción explícita de los datos que el sistema recibe y produce (§3.3)</td>
+              <td>
+                <span class="artefact-tag">§3 Entradas y salidas del sistema</span>
+              </td>
+              <td class="coverage-cell">
+                <span class="level-badge level-full">Completo</span>
+                <div class="pct">100%</div>
+                <div class="coverage-bar-wrap"><div class="coverage-bar" style="width:100%"></div></div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- ── 3.3 BABOK v3 — Detalle por área de conocimiento ── -->
+      <div class="std-block">
+        <div class="std-block-header">
+          <div class="std-badge">BABOK v3</div>
+          <div>
+            <div class="std-title">Business Analysis Body of Knowledge — IIBA 2015</div>
+            <div class="std-subtitle">Áreas de conocimiento y tareas de análisis de negocio</div>
+          </div>
+          <div class="std-global-score">
+            <div class="score-value">65%</div>
+            <div class="score-label">Cobertura global</div>
+          </div>
+        </div>
+        <table class="std-detail-table">
+          <thead>
+            <tr>
+              <th>Área de conocimiento</th>
+              <th>Descripción y tareas cubiertas</th>
+              <th>Artefactos que lo cubren</th>
+              <th>Cobertura</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Planificación y monitorización del BA</td>
+              <td>Planificar el enfoque de análisis, definir stakeholders, estimar el trabajo</td>
+              <td>
+                <span class="artefact-tag">docs/project/</span>
+                <span class="artefact-tag">backlog/epics/</span>
+                <span class="artefact-tag">docs/refinement/</span>
+              </td>
+              <td class="coverage-cell">
+                <span class="level-badge level-medium">Medio</span>
+                <div class="pct">55%</div>
+                <div class="coverage-bar-wrap"><div class="coverage-bar" style="width:55%"></div></div>
+              </td>
+            </tr>
+            <tr>
+              <td>Elicitación y colaboración</td>
+              <td>Obtener información de stakeholders; documentar sesiones y evidencias</td>
+              <td>
+                <span class="artefact-tag">docs/refinement/sessions/</span>
+                <span class="artefact-tag">docs/refinement/evidence/</span>
+                <span class="artefact-tag">§2.2 Stakeholders</span>
+                <span class="artefact-tag">§16 Notas y decisiones</span>
+              </td>
+              <td class="coverage-cell">
+                <span class="level-badge level-high">Alto</span>
+                <div class="pct">75%</div>
+                <div class="coverage-bar-wrap"><div class="coverage-bar" style="width:75%"></div></div>
+              </td>
+            </tr>
+            <tr>
+              <td>Gestión del ciclo de vida de los requisitos</td>
+              <td>Mantener trazabilidad, gestionar cambios y prioridades, controlar estados</td>
+              <td>
+                <span class="artefact-tag">traceability/RTM.yaml</span>
+                <span class="artefact-tag">Historial versiones</span>
+                <span class="artefact-tag">Metadatos §Estado / §Estabilidad</span>
+                <span class="artefact-tag">traceability/epics_to_use_cases.md</span>
+              </td>
+              <td class="coverage-cell">
+                <span class="level-badge level-full">Completo</span>
+                <div class="pct">90%</div>
+                <div class="coverage-bar-wrap"><div class="coverage-bar" style="width:90%"></div></div>
+              </td>
+            </tr>
+            <tr>
+              <td>Análisis de la estrategia</td>
+              <td>Analizar el estado actual, definir el estado futuro y la estrategia de transición</td>
+              <td>
+                <span class="artefact-tag">docs/project/</span>
+                <span class="artefact-tag">docs/architecture/</span>
+                <span class="artefact-tag">docs/adr/</span>
+              </td>
+              <td class="coverage-cell">
+                <span class="level-badge level-medium">Medio</span>
+                <div class="pct">50%</div>
+                <div class="coverage-bar-wrap"><div class="coverage-bar" style="width:50%"></div></div>
+              </td>
+            </tr>
+            <tr>
+              <td>Análisis y diseño de requisitos</td>
+              <td>Especificar y modelar requisitos; definir supuestos, restricciones, entradas/salidas y criterios de aceptación</td>
+              <td>
+                <span class="artefact-tag">§1 Descripción</span>
+                <span class="artefact-tag">§3 Entradas/Salidas</span>
+                <span class="artefact-tag">§6 Supuestos</span>
+                <span class="artefact-tag">§7–§9 Flujos</span>
+                <span class="artefact-tag">§10 Reglas negocio</span>
+                <span class="artefact-tag">§12 Criterios AC</span>
+              </td>
+              <td class="coverage-cell">
+                <span class="level-badge level-full">Completo</span>
+                <div class="pct">95%</div>
+                <div class="coverage-bar-wrap"><div class="coverage-bar" style="width:95%"></div></div>
+              </td>
+            </tr>
+            <tr>
+              <td>Evaluación de soluciones</td>
+              <td>Validar que la solución entregada satisface las necesidades del negocio</td>
+              <td>
+                <span class="artefact-tag">§13 Tests alto nivel</span>
+                <span class="artefact-tag">docs/qa/</span>
+                <span class="artefact-tag">traceability/RTM.yaml §estado</span>
+              </td>
+              <td class="coverage-cell">
+                <span class="level-badge level-medium">Medio</span>
+                <div class="pct">55%</div>
+                <div class="coverage-bar-wrap"><div class="coverage-bar" style="width:55%"></div></div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- ── 3.4 Resto de estándares ── -->
+      <div class="std-block">
+        <div class="std-block-header">
+          <div class="std-badge">Otros</div>
+          <div>
+            <div class="std-title">Estándares y marcos complementarios</div>
+            <div class="std-subtitle">Cobertura estructural del repositorio de gobernanza</div>
+          </div>
+        </div>
+        <table class="std-detail-table">
+          <thead>
+            <tr><th>Estándar / Marco</th><th>Versión</th><th>Artefacto / Carpeta que lo soporta</th><th>Cobertura inicial</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>CMMI Dev</td><td>v2.0</td>
+              <td><span class="artefact-tag">traceability/</span><span class="artefact-tag">docs/requirements/</span><span class="artefact-tag">backlog/</span></td>
+              <td class="coverage-cell"><span class="level-badge level-medium">Nivel 2 — Gestionado</span><div class="pct">40%</div><div class="coverage-bar-wrap"><div class="coverage-bar" style="width:40%"></div></div></td>
+            </tr>
+            <tr>
+              <td>ISO/IEC 25010</td><td>2023</td>
+              <td><span class="artefact-tag">docs/qa/</span><span class="artefact-tag">tests/</span><span class="artefact-tag">traceability/</span></td>
+              <td class="coverage-cell"><span class="level-badge level-low">Bajo — estructura base</span><div class="pct">30%</div><div class="coverage-bar-wrap"><div class="coverage-bar" style="width:30%"></div></div></td>
+            </tr>
+            <tr>
+              <td>ISO/IEC 27001</td><td>2022</td>
+              <td><span class="artefact-tag">ops/</span><span class="artefact-tag">docs/architecture/</span></td>
+              <td class="coverage-cell"><span class="level-badge level-low">Bajo — estructura base</span><div class="pct">20%</div><div class="coverage-bar-wrap"><div class="coverage-bar" style="width:20%"></div></div></td>
+            </tr>
+            <tr>
+              <td>IEEE 1012</td><td>2016</td>
+              <td><span class="artefact-tag">tests/</span><span class="artefact-tag">docs/qa/</span><span class="artefact-tag">§13 Tests alto nivel</span></td>
+              <td class="coverage-cell"><span class="level-badge level-low">Bajo-medio</span><div class="pct">35%</div><div class="coverage-bar-wrap"><div class="coverage-bar" style="width:35%"></div></div></td>
+            </tr>
+            <tr>
+              <td>ITIL v4</td><td>2019</td>
+              <td><span class="artefact-tag">ops/</span><span class="artefact-tag">ops/runbooks/</span></td>
+              <td class="coverage-cell"><span class="level-badge level-low">Bajo — estructura base</span><div class="pct">25%</div><div class="coverage-bar-wrap"><div class="coverage-bar" style="width:25%"></div></div></td>
+            </tr>
+            <tr>
+              <td>12-Factor App</td><td>—</td>
+              <td><span class="artefact-tag">ops/</span><span class="artefact-tag">src/</span><span class="artefact-tag">docs/architecture/</span></td>
+              <td class="coverage-cell"><span class="level-badge level-medium">Medio — estructura compatible</span><div class="pct">45%</div><div class="coverage-bar-wrap"><div class="coverage-bar" style="width:45%"></div></div></td>
+            </tr>
+            <tr>
+              <td>OpenAPI / Swagger</td><td>3.x</td>
+              <td><span class="artefact-tag">spec/open-api/</span><span class="artefact-tag">services/contracts/</span><span class="artefact-tag">traceability/use_cases_to_openapi.md</span></td>
+              <td class="coverage-cell"><span class="level-badge level-medium">Medio</span><div class="pct">55%</div><div class="coverage-bar-wrap"><div class="coverage-bar" style="width:55%"></div></div></td>
+            </tr>
+            <tr>
+              <td>GitFlow / Trunk-based</td><td>—</td>
+              <td><span class="artefact-tag">ops/ci-cd/</span><span class="artefact-tag">README.md</span></td>
+              <td class="coverage-cell"><span class="level-badge level-low">Bajo — documentado en README</span><div class="pct">30%</div><div class="coverage-bar-wrap"><div class="coverage-bar" style="width:30%"></div></div></td>
+            </tr>
+            {{EXTRA_STANDARDS_ROWS}}
+          </tbody>
+        </table>
+      </div>
+
+      <p style="font-size:11px;color:#7a8fa8;margin-top:4px;">* La cobertura refleja la preparación estructural y documental del repositorio en el momento de su creación, no la implementación funcional del proyecto. IEEE 830 y BABOK v3 muestran cobertura alta gracias a la plantilla <code>functional-requirement.template.md v2.0.0</code>.</p>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════
+         SECCIÓN 4 — MÉTRICAS INICIALES
+    ══════════════════════════════════════════════════════════ -->
+    <div class="section">
+      <div class="section-title">4. Métricas iniciales del repositorio</div>
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-value">{{TOTAL_FOLDERS}}</div>
+          <div class="metric-label">Carpetas creadas</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value">{{TOTAL_FILES}}</div>
+          <div class="metric-label">Ficheros creados</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value">{{TOTAL_AGENTS}}</div>
+          <div class="metric-label">Agentes definidos</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value">{{TOTAL_TEMPLATES}}</div>
+          <div class="metric-label">Plantillas disponibles</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════
+         SECCIÓN 5 — PRÓXIMOS PASOS
+    ══════════════════════════════════════════════════════════ -->
+    <div class="section">
+      <div class="section-title">5. Próximos pasos recomendados</div>
+      <ul class="steps-list">
+        {{NEXT_STEPS_ITEMS}}
+      </ul>
+    </div>
+
+  </div><!-- /content -->
+
+  <!-- ══════════════════════════════════════════════════════════════
+       PIE DE PÁGINA
+  ══════════════════════════════════════════════════════════════ -->
+  <div class="footer">
+    <div>Generado por <strong>AgentProjectFromScratch</strong> · Plataforma <strong>OpenCode</strong> · {{CREATION_DATE}}</div>
+    <div class="seal">Este informe ha sido generado automáticamente. No modificar manualmente.</div>
+  </div>
+
+</div><!-- /page -->
+</body>
+</html>

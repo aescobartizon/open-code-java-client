@@ -1,0 +1,16 @@
+<configuration>
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+
+    <logger name="com.opencode.client" level="DEBUG"/>
+    <logger name="org.springframework.web.reactive" level="WARN"/>
+    <logger name="reactor.netty" level="WARN"/>
+    <logger name="org.testcontainers" level="INFO"/>
+</configuration>
